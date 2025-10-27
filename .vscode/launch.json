@@ -1,0 +1,39 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Frontend: Open in Browser (after start)",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:5666", // ⚠️ 修改成项目实际端口
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "Frontend: pnpm dev:antd", // ⚠️ 自动运行 pnpm run dev:antd
+      "sourceMaps": true,
+      "breakOnLoad": true
+    },
+    {
+      "name": "Backend: Launch Uvicorn (debug)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "jinja": true,
+      "subProcess": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Start Both and Open Browser",
+      "configurations": [
+        "Frontend: Open in Browser (after start)",
+        "Backend: Launch Uvicorn (debug)"
+      ]
+    }
+  ]
+}
