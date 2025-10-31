@@ -106,7 +106,7 @@ def create_tag(db: Session, tag_in: TagCreate, user_id: int):
 
 
 def update_tag(db: Session, tag: Tag, tag_in: TagUpdate):
-    update_data = tag_in.dict(exclude_unset=True)
+    update_data = tag_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(tag, field, value)
     

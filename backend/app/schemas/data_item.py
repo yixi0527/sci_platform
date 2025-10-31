@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 
 class DataItemBase(BaseModel):
@@ -58,7 +58,7 @@ class DataItemRead(DataItemBase):
     createdAt: datetime
     updatedAt: datetime
 
-    class Config:
-        from_attributes = True
-        # Allow population by field name or alias
-        allow_population_by_field_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True  # Pydantic V2: replaces allow_population_by_field_name
+    )

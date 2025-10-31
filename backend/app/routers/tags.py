@@ -1,3 +1,7 @@
+"""
+标签管理路由
+提供标签的增删改查、权限控制等接口
+"""
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +14,8 @@ from app.models.tag import EntityType
 from app.schemas.tag import TagCreate, TagRead, TagUpdate
 from app.services import tag_service
 from app.utils.roles import is_admin_or_tutor
+from app.utils.logger import api_logger as logger
+from app.utils.error_handler import handle_integrity_error
 
 router = APIRouter(
     prefix="/tags",
@@ -26,25 +32,40 @@ def list_tags(
     current_user: dict = Depends(require_access_token),
     db: Session = Depends(get_db),
 ):
-    """获取标签列表
+    """
+    获取标签列表
     
     权限规则：
     - admin/tutor: 看到所有标签
     - 其他用户: 只看到自己创建的标签
+    
+    Args:
+        entity_type: 实体类型筛选
+        skip: 跳过的记录数
+        limit: 返回的最大记录数
+        
+    Returns:
+        List[TagRead]: 标签列表
+        
+    Raises:
+        400: 实体类型无效
     """
+    logger.info(f"List tags requested by user: {current_user.get('username')}, entity_type={entity_type}")
+    
     entity_type_enum = None
     if entity_type:
         try:
             entity_type_enum = EntityType(entity_type)
         except ValueError:
+            logger.warning(f"Invalid entity type: {entity_type}")
             raise HTTPException(
                 status_code=400, 
                 detail=f"Invalid entity type. Must be one of: Project, Subject, DataItem, User"
             )
     
     tags = tag_service.list_tags(db, current_user, entity_type_enum, skip, limit)
+    logger.debug(f"Found {len(tags)} tags")
     
-    # 返回标签列表
     return tags
 
 
@@ -99,7 +120,20 @@ def create_tag(
     current_user: dict = Depends(require_access_token),
     db: Session = Depends(get_db)
 ):
-    """创建标签，自动关联当前用户"""
+    """
+    创建标签，自动关联当前用户
+    
+    Args:
+        tag_in: 标签创建数据
+        
+    Returns:
+        TagRead: 创建的标签
+        
+    Raises:
+        400: 标签已存在
+    """
+    logger.info(f"Create tag requested by user: {current_user.get('username')}, name: {tag_in.tagName}, type: {tag_in.entityType}")
+    
     try:
         # 检查是否已存在同名标签（同一用户、同一实体类型）
         existing = tag_service.get_tag_by_name(
@@ -109,16 +143,19 @@ def create_tag(
             current_user.get('userId')
         )
         if existing:
+            logger.warning(f"Tag '{tag_in.tagName}' already exists for user {current_user.get('userId')}")
             raise HTTPException(
                 status_code=400, 
                 detail=f"Tag '{tag_in.tagName}' already exists for {tag_in.entityType.value}"
             )
         
         tag = tag_service.create_tag(db, tag_in, current_user.get('userId'))
+        logger.info(f"Tag created successfully: {tag.tagId}")
         return tag
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Tag already exists")
+        logger.error(f"Failed to create tag: {e}")
+        handle_integrity_error(e, "标签")
 
 
 @router.put("/{tag_id}", response_model=TagRead)
@@ -155,13 +192,25 @@ def update_tag(
     return updated_tag
 
 
-@router.delete("/{tag_id}", status_code=200)
+@router.delete("/{tag_id}", status_code=204)
 def delete_tag(
     tag_id: int, 
     current_user: dict = Depends(require_access_token),
     db: Session = Depends(get_db)
 ):
-    """删除标签（只能删除自己创建的标签）"""
+    """
+    删除标签（只能删除自己创建的标签）
+    
+    Args:
+        tag_id: 标签ID
+        
+    Returns:
+        204 No Content
+        
+    Raises:
+        404: 标签不存在
+        403: 权限不足
+    """
     tag = tag_service.get_tag(db, tag_id)
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
@@ -171,4 +220,3 @@ def delete_tag(
         raise HTTPException(status_code=403, detail="Not authorized to delete this tag")
     
     tag_service.delete_tag(db, tag)
-    return {"message": "Tag deleted successfully"}

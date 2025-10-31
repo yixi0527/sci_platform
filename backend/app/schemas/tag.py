@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.tag import EntityType
 
@@ -30,5 +30,4 @@ class TagRead(TagBase):
     createdAt: datetime
     updatedAt: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

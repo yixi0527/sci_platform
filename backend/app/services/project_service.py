@@ -34,7 +34,7 @@ def create_project(db: Session, project_in: ProjectCreate) -> Project:
 
 def update_project(db: Session, project: Project, project_in: ProjectUpdate) -> Project:
     """更新项目，只更新提供的字段"""
-    update_data = project_in.dict(exclude_unset=True)
+    update_data = project_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(project, field, value)
     project.updatedAt = datetime.utcnow()

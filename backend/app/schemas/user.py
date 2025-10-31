@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 from app.utils.roles import deserialize_roles
 
@@ -47,8 +47,7 @@ class UserRead(UserBase):
     createdAt: datetime
     updatedAt: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserInfo(UserBase):
     userId: int

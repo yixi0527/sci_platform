@@ -28,7 +28,7 @@ CREATE TABLE User (
 
 -- 创建admin用户
 INSERT INTO User (username, passwordHash, roles, realName) VALUES 
-('admin', '$2b$12$N2qtyLglF22jAKqFW.bZze9UlFAWYYOSP09k29Bps/g4viM6DssTK', '["admin"]', 'wtq');
+('admin', '$2b$12$5dGeLkt3.X0q2sRtmuKgC.ZVOuSkXubVfZGSkU4moB4SEgAcqOwO6', '["admin"]', 'wtq');
 ----------------------------------------------
 ----------------------------------------------
 
@@ -107,9 +107,13 @@ CREATE TABLE LogEntry (
     logId INT PRIMARY KEY AUTO_INCREMENT,
     userId INT NULL,
     action VARCHAR(100),
+    actionType VARCHAR(50) COMMENT '操作类型分类：AUTH(认证), PROJECT(项目), USER(用户), DATA(数据), SUBJECT(受试者), TAG(标签), FILE(文件), ANALYSIS(分析)',
     detail JSON,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (userId) REFERENCES User(userId) ON DELETE SET NULL
+    FOREIGN KEY (userId) REFERENCES User(userId) ON DELETE SET NULL,
+    INDEX idx_action_type (actionType),
+    INDEX idx_user_id (userId),
+    INDEX idx_created_at (createdAt)
 );
 
 -- ----------------------------------------------
@@ -159,10 +163,10 @@ INSERT INTO DataItem (name, userId, projectId, subjectId, fileDescription, fileP
 ('eeg_analysis_result_01', 1, 3, NULL, '自动化分析结果（不属于具体受试者）', '/results/EEG_Analysis/result_01.json', 'eeg_analysis_result_01.json', 'json', 'result');
 
 -- LogEntry
-INSERT INTO LogEntry (userId, action, detail) VALUES
-(1, 'create_project', JSON_OBJECT('projectName', 'SleepStudy')),
-(2, 'upload_file', JSON_OBJECT('fileName', 'S001_session1_raw.edf', 'projectId', 1, 'subjectId', 1)),
-(1, 'create_tag', JSON_OBJECT('tagName', '高质量', 'entityType', 'DataItem'));
+INSERT INTO LogEntry (userId, action, actionType, detail) VALUES
+(1, 'create_project', 'PROJECT', JSON_OBJECT('projectName', 'SleepStudy')),
+(2, 'upload_file', 'FILE', JSON_OBJECT('fileName', 'S001_session1_raw.edf', 'projectId', 1, 'subjectId', 1)),
+(1, 'create_tag', 'TAG', JSON_OBJECT('tagName', '高质量', 'entityType', 'DataItem'));
 
 -- ----------------------------------------------
 -- 完成

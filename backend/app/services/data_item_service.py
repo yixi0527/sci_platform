@@ -35,7 +35,7 @@ def get_data_item(db: Session, data_item_id: int) -> Optional[DataItem]:
 
 
 def create_data_item(db: Session, data_item_in: DataItemCreate) -> DataItem:
-    data_item = DataItem(**data_item_in.dict())
+    data_item = DataItem(**data_item_in.model_dump())
     db.add(data_item)
     db.commit()
     db.refresh(data_item)
@@ -43,7 +43,7 @@ def create_data_item(db: Session, data_item_in: DataItemCreate) -> DataItem:
 
 
 def update_data_item(db: Session, data_item: DataItem, data_item_in: DataItemUpdate) -> DataItem:
-    update_data = data_item_in.dict(exclude_unset=True)
+    update_data = data_item_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(data_item, field, value)
     data_item.updatedAt = datetime.utcnow()

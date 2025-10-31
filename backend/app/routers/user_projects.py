@@ -74,16 +74,25 @@ def create_user_project(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.delete("/{user_project_id}", status_code=200)
+@router.delete("/{user_project_id}", status_code=204)
 def delete_user_project(
     user_project_id: int,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(require_access_token),
 ):
     """
-    Delete a user-project association.
+    删除用户-项目关联
+    
+    Args:
+        user_project_id: 关联ID
+        
+    Returns:
+        204 No Content
+        
+    Raises:
+        404: 关联不存在
     """
     membership = project_service.get_membership(db, user_project_id)
     if not membership:
         raise HTTPException(status_code=404, detail="User-project association not found")
     project_service.remove_user_from_project(db, membership)
-    return None

@@ -10,6 +10,7 @@ from app.dependencies.auth import require_access_token
 from app.schemas.user import UserCreate, UserRead, UserUpdate
 from app.schemas.auth import UserInfo
 from app.services import user_service
+from app.utils.log_helper import log_user
 
 router = APIRouter(
     prefix="/user",
@@ -40,9 +41,20 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=UserRead, status_code=201)
-def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    user_in: UserCreate, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_access_token),
+):
     try:
         user = user_service.create_user(db, user_in)
+        
+        # 记录日志
+        log_user(db, current_user.get('userId'), 'create_user', {
+            'userId': user.userId,
+            'username': user.username,
+            'realName': user.realName,
+        })
     except IntegrityError as e:
         db.rollback()
         raw = ""
@@ -70,12 +82,24 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{user_id}", response_model=UserRead)
-def update_user(user_id: int, user_in: UserUpdate, db: Session = Depends(get_db)):
+def update_user(
+    user_id: int, 
+    user_in: UserUpdate, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_access_token),
+):
     user = user_service.get_user(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户未找到")
     try:
         user = user_service.update_user(db, user, user_in)
+        
+        # 记录日志
+        log_user(db, current_user.get('userId'), 'update_user', {
+            'userId': user_id,
+            'username': user.username,
+            'changes': user_in.model_dump(exclude_unset=True),
+        })
     except IntegrityError as e:
         try:
             db.rollback()
@@ -105,10 +129,33 @@ def update_user(user_id: int, user_in: UserUpdate, db: Session = Depends(get_db)
     return user
 
 
-@router.delete("/{user_id}", status_code=200)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+@router.delete("/{user_id}", status_code=204)
+def delete_user(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_access_token),
+):
+    """
+    删除用户
+    
+    Args:
+        user_id: 用户ID
+        
+    Returns:
+        204 No Content
+        
+    Raises:
+        404: 用户不存在
+    """
     user = user_service.get_user(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户未找到")
+    
+    username = user.username
     user_service.delete_user(db, user)
-    return None
+    
+    # 记录日志
+    log_user(db, current_user.get('userId'), 'delete_user', {
+        'userId': user_id,
+        'username': username,
+    })

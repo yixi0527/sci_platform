@@ -63,19 +63,41 @@ def verify_access_token(db: Session, authorization: str | None):
     if len(parts) != 2:
         return None
     token = parts[1]
+    
+    # Token 长度验证（防止极端长度攻击）
+    if len(token) > 2000:
+        return None
+    
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except jwt.ExpiredSignatureError:
+        # Token 已过期
+        return None
+    except jwt.InvalidTokenError:
+        # Token 无效
+        return None
     except Exception:
+        # 其他异常
         return None
 
     # payload contains sub=username and userId
     username = payload.get("sub")
     userId = payload.get("userId")
+    
+    # 至少需要一个标识符
+    if not username and not userId:
+        return None
+    
     user = None
-    if username:
-        user = db.query(User).filter(User.username == username).first()
-    elif userId:
-        user = db.query(User).filter(User.userId == userId).first()
+    try:
+        if username:
+            user = db.query(User).filter(User.username == username).first()
+        elif userId:
+            user = db.query(User).filter(User.userId == userId).first()
+    except Exception:
+        # 数据库查询失败
+        return None
+    
     if not user:
         return None
 

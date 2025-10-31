@@ -34,7 +34,7 @@ def create_subject(db: Session, subject_in: SubjectCreate) -> Subject:
 
 def update_subject(db: Session, subject: Subject, subject_in: SubjectUpdate) -> Subject:
     """更新受试者，只更新提供的字段"""
-    update_data = subject_in.dict(exclude_unset=True)
+    update_data = subject_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(subject, field, value)
     subject.updatedAt = datetime.utcnow()

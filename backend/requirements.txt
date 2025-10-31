@@ -1,0 +1,31 @@
+# Web 框架
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# 数据库
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+
+# 数据验证与序列化
+pydantic>=2.0.0
+
+# 密码加密
+passlib[bcrypt]>=1.7.4
+
+# JWT 认证
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6
+
+# 数值计算（荧光分析）
+numpy>=1.24.0
+pandas>=2.0.0
+
+# 科学计算（可选）
+scipy>=1.10.0
+
+# HTTP 客户端（测试用）
+requests>=2.31.0
+httpx>=0.25.0
+
+# CORS 支持
+starlette>=0.27.0

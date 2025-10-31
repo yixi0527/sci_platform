@@ -25,7 +25,7 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 
-def save_uploaded_file(file: UploadFile, project_id: int, user_id: int) -> str:
+def save_uploaded_file(file: UploadFile, project_id: int, user_id: int, relative_path: Optional[str] = None) -> str:
     """
     Save uploaded file to disk and return the file path.
     
@@ -33,28 +33,37 @@ def save_uploaded_file(file: UploadFile, project_id: int, user_id: int) -> str:
         file: The uploaded file
         project_id: Project ID for organizing files
         user_id: User ID for organizing files
+        relative_path: Optional relative path to preserve folder structure
     
     Returns:
         Relative file path where the file was saved
     """
-    # Create directory structure: uploads/{project_id}/{user_id}/
-    project_dir = UPLOAD_DIR / str(project_id) / str(user_id)
-    project_dir.mkdir(parents=True, exist_ok=True)
+    # Create base directory structure: uploads/{project_id}/{user_id}/
+    base_dir = UPLOAD_DIR / str(project_id) / str(user_id)
     
-    # Generate unique filename to avoid conflicts
-    filename = file.filename or "unnamed_file"
-    file_path = project_dir / filename
-    
-    # If file exists, append number to filename
-    counter = 1
-    while file_path.exists():
-        name_parts = filename.rsplit(".", 1)
-        if len(name_parts) == 2:
-            new_filename = f"{name_parts[0]}_{counter}.{name_parts[1]}"
-        else:
-            new_filename = f"{filename}_{counter}"
-        file_path = project_dir / new_filename
-        counter += 1
+    # If relative path is provided, use it to preserve folder structure
+    if relative_path:
+        # Use the full relative path including subdirectories
+        full_path = base_dir / relative_path
+        # Create all parent directories
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path = full_path
+    else:
+        # Original behavior: save directly in base directory
+        base_dir.mkdir(parents=True, exist_ok=True)
+        filename = file.filename or "unnamed_file"
+        file_path = base_dir / filename
+        
+        # If file exists, append number to filename
+        counter = 1
+        while file_path.exists():
+            name_parts = filename.rsplit(".", 1)
+            if len(name_parts) == 2:
+                new_filename = f"{name_parts[0]}_{counter}.{name_parts[1]}"
+            else:
+                new_filename = f"{filename}_{counter}"
+            file_path = base_dir / new_filename
+            counter += 1
     
     # Save file
     with open(file_path, "wb") as f:
@@ -103,7 +112,7 @@ async def upload_file(
             dataType=dataType,
         )
         
-        data_item = DataItem(**data_item_data.dict())
+        data_item = DataItem(**data_item_data.model_dump())
         db.add(data_item)
         db.commit()
         db.refresh(data_item)
@@ -113,6 +122,144 @@ async def upload_file(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
+
+@router.post("/upload-folder", response_model=dict, status_code=201)
+async def upload_folder(
+    files: list[UploadFile] = File(...),
+    projectId: int = Form(...),
+    relativePaths: Optional[str] = Form(None),  # JSON string of relative paths
+    current_user: dict = Depends(require_access_token),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload multiple files with folder structure preservation.
+    Automatically generates tags based on directory hierarchy.
+    
+    Args:
+        files: List of files to upload
+        projectId: Project ID
+        relativePaths: JSON string mapping file indices to relative paths
+        current_user: Authenticated user
+        db: Database session
+    
+    Returns:
+        Summary of uploaded files and generated tags
+    """
+    import json
+    from app.models.tag import Tag, EntityType
+    from app.services import tag_service
+    
+    try:
+        # Parse relative paths if provided
+        path_mapping = {}
+        if relativePaths:
+            path_mapping = json.loads(relativePaths)
+        
+        uploaded_items = []
+        tag_map = {}  # {tag_name: tag_id}
+        
+        for idx, file in enumerate(files):
+            # Get relative path for this file
+            rel_path = path_mapping.get(str(idx), file.filename or f"file_{idx}")
+            
+            # Parse directory structure for tags
+            path_parts = Path(rel_path).parts
+            directory_tags = []
+            
+            # Extract tags from directory structure (exclude filename)
+            if len(path_parts) > 1:
+                for part in path_parts[:-1]:  # Exclude the filename
+                    if part and part != '.':
+                        directory_tags.append(part)
+            
+            # Save file with relative path to preserve folder structure
+            relative_file_path = save_uploaded_file(file, projectId, current_user['userId'], rel_path)
+            
+            # Get or create tags
+            tag_ids = []
+            for tag_name in directory_tags:
+                if tag_name not in tag_map:
+                    # Check if tag exists
+                    existing_tag = db.query(Tag).filter(
+                        Tag.tagName == tag_name,
+                        Tag.entityType == EntityType.DATAITEM,
+                        Tag.userId == current_user['userId']
+                    ).first()
+                    
+                    if existing_tag:
+                        tag_map[tag_name] = existing_tag.tagId
+                    else:
+                        # Create new tag
+                        new_tag = Tag(
+                            tagName=tag_name,
+                            tagDescription=f"Auto-generated from folder structure",
+                            entityType=EntityType.DATAITEM,
+                            userId=current_user['userId']
+                        )
+                        db.add(new_tag)
+                        db.flush()
+                        tag_map[tag_name] = new_tag.tagId
+                
+                tag_ids.append(tag_map[tag_name])
+            
+            # Determine file type
+            file_type = None
+            filename = file.filename or f"file_{idx}"
+            if '.' in filename:
+                file_type = filename.rsplit('.', 1)[-1]
+            
+            # Determine data type based on filename patterns
+            data_type = "raw"
+            filename_lower = filename.lower()
+            if 'processed' in filename_lower or 'filtered' in filename_lower:
+                data_type = "processed"
+            elif 'result' in filename_lower or 'output' in filename_lower:
+                data_type = "result"
+            
+            # Determine file category for fluorescence analysis
+            file_category = None
+            if 'top' in filename_lower or 'label' in filename_lower or 'behavior' in filename_lower:
+                file_category = 'label'
+            elif any(col in filename_lower for col in ['ch1', 'ch2', 'fluorescence', '410', '470']):
+                file_category = 'fluorescence'
+            
+            # Create DataItem record
+            data_item = DataItem(
+                name=filename,
+                projectId=projectId,
+                userId=current_user['userId'],
+                fileDescription=f"Uploaded from folder: {rel_path}",
+                filePath=relative_file_path,
+                fileName=filename,
+                fileType=file_type,
+                dataType=data_type,
+                tagIds=tag_ids if tag_ids else None
+            )
+            db.add(data_item)
+            db.flush()
+            
+            uploaded_items.append({
+                'dataItemId': data_item.dataItemId,
+                'name': data_item.name,
+                'relativePath': rel_path,
+                'tags': directory_tags,
+                'tagIds': tag_ids,
+                'fileCategory': file_category
+            })
+        
+        db.commit()
+        
+        return {
+            'success': True,
+            'uploadedCount': len(uploaded_items),
+            'items': uploaded_items,
+            'generatedTags': list(tag_map.keys())
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Folder upload failed: {str(e)}")
 
 
 @router.get("/download/{data_item_id}")
